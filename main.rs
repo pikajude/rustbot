@@ -4,11 +4,14 @@ mod damn;
 mod packet;
 mod protocol;
 
-use core::result::*;
-use core::io::*;
-
 fn respond(pkt: ~str) {
   let pk = packet::parse(pkt);
+  match pk.command {
+    ~"dAmnServer" => {
+      io::println("ello");
+    }
+    _ => {}
+  }
   io::println(fmt!("%?", pk));
 }
 
