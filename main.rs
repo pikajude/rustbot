@@ -4,11 +4,11 @@ mod damn;
 mod packet;
 mod protocol;
 
-fn respond(pkt: ~str) {
-  let pk = packet::parse(pkt);
+fn respond(sock: std::net_tcp::TcpSocketBuf) {
+  let pk = packet::parse(sock.read_c_str());
   match pk.command {
     ~"dAmnServer" => {
-      io::println("ello");
+      sock.write_str("login aughters\npk=lol\n\x00");
     }
     _ => {}
   }
@@ -20,7 +20,7 @@ fn main() {
     Ok(v) => {
       v.sock.write_str("dAmnClient 0.3\nagent=foobar\n\x00");
       loop {
-        respond(v.sock.read_c_str());
+        respond(v.sock);
       }
     },
     Err(k) => io::println(fmt!("%?", k))

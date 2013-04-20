@@ -17,7 +17,7 @@ fn splitn_char(st: &str, sep: char, count: uint) -> ~[~str] {
   do vec::build |f| { str::each_splitn_char(st, sep, count, |chunk| { f(chunk.to_owned()); true }) }
 }
 
-pub fn parse(pkt: ~str) -> @Packet {
+pub fn parse(pkt: ~str) -> ~Packet {
   let chunks = split(pkt, "\n\n"),
       metadata = split(copy chunks[0], "\n"),
       body = str::connect(vec::tail(chunks), "\n\n"),
@@ -41,7 +41,7 @@ pub fn parse(pkt: ~str) -> @Packet {
       });
     }
   }
-  @Packet {
+  ~Packet {
     command: pktHead,
     param: pktParam,
     args: pktArgs,
