@@ -10,11 +10,11 @@ pub struct Packet {
 }
 
 fn split(st: ~str, sep: &'static str) -> ~[~str] {
-  do vec::build |f| { str::each_split_str(st, sep, |chunk| { f(chunk.to_owned()); true } ) }
+  do vec::build |f| { do str::each_split_str(st, sep) |chunk| { f(chunk.to_owned()); true } }
 }
 
 fn splitn_char(st: &str, sep: char, count: uint) -> ~[~str] {
-  do vec::build |f| { str::each_splitn_char(st, sep, count, |chunk| { f(chunk.to_owned()); true }) }
+  do vec::build |f| { do str::each_splitn_char(st, sep, count) |chunk| { f(chunk.to_owned()); true } }
 }
 
 pub fn parse(pkt: ~str) -> ~Packet {
@@ -33,12 +33,14 @@ pub fn parse(pkt: ~str) -> ~Packet {
   match vec::tail(metadata) {
     [] => {},
     xs => {
-      let pairs = vec::map(xs, |x| splitn_char(*x, '=', 1));
-      vec::each(pairs, |pair| if vec::len(*pair) == 2 {
-        pktArgs.insert(copy pair[0], copy pair[1])
-      } else {
-        false
-      });
+      let pairs = do vec::map(xs) |x| { splitn_char(*x, '=', 1) };
+      for vec::each(pairs) |pair| {
+        if vec::len(*pair) == 2 {
+          pktArgs.insert(copy pair[0], copy pair[1])
+        } else {
+          false
+        };
+      }
     }
   }
   ~Packet {
