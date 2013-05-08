@@ -1,14 +1,16 @@
 extern mod std;
 
+use damn::Damn;
+
 mod damn;
 mod packet;
 mod protocol;
 
-fn respond(sock: std::net_tcp::TcpSocketBuf) {
-  let pk = packet::parse(sock.read_c_str());
+fn respond(damn: &Damn) {
+  let pk = packet::parse(damn.read());
   match pk.command {
     ~"dAmnServer" => {
-      sock.write_str("login aughters\npk=lol\n\x00");
+      damn.write(~"login aughters\npk=lol");
     }
     _ => {}
   }
@@ -18,9 +20,9 @@ fn respond(sock: std::net_tcp::TcpSocketBuf) {
 fn main() {
   match damn::make_damn() {
     Ok(v) => {
-      v.sock.write_str("dAmnClient 0.3\nagent=foobar\n\x00");
+      v.write(~"dAmnClient 0.3\nagent=foobar");
       loop {
-        respond(v.sock);
+        respond(v);
       }
     },
     Err(k) => io::println(fmt!("%?", k))
