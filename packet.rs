@@ -1,42 +1,53 @@
-extern mod core;
-
-use core::hashmap::linear::*;
+use std::hashmap::*;
 
 pub struct Packet {
   command: ~str,
   param: Option<~str>,
-  args: LinearMap<~str, ~str>,
+  args: HashMap<~str, ~str>,
   body: Option<~str>
 }
 
 fn split(st: ~str, sep: &'static str) -> ~[~str] {
-  do vec::build |f| { do str::each_split_str(st, sep) |chunk| { f(chunk.to_owned()); true } }
+  do st.split_str_iter(sep).to_owned_vec().map |x| { x.to_owned() }
 }
 
 fn splitn_char(st: &str, sep: char, count: uint) -> ~[~str] {
-  do vec::build |f| { do str::each_splitn_char(st, sep, count) |chunk| { f(chunk.to_owned()); true } }
+  do st.splitn_iter(sep, count).to_owned_vec().map |x| { x.to_owned() }
+}
+
+fn uncons(m: ~[~str]) -> (~str, ~[~str]) {
+  match m {
+    [] => fail!("Impossibru!"),
+    [ref x, ..ys] => (x.to_owned(), ys.to_owned())
+  }
+}
+
+fn unconsf(m: ~[~str], h: &fn(~str) -> ~str, t: &fn(~[~str]) -> ~str) -> (~str, ~str) {
+  let (h_, t_) = uncons(m);
+  (h(h_), t(t_))
 }
 
 pub fn parse(pkt: ~str) -> ~Packet {
-  let chunks = split(pkt, "\n\n"),
-      metadata = split(copy chunks[0], "\n"),
-      body = str::connect(vec::tail(chunks), "\n\n"),
-      head = copy metadata[0];
-  let mut pktHead:~str,
-          pktParam:Option<~str> = None,
-          pktArgs:LinearMap<~str, ~str> = linear_map_with_capacity(8);
+  let chunks = split(pkt, "\n\n");
+  let chunknum = chunks.len();
+  let (body, chunk_head) = unconsf(chunks, |n| n, |m| m.connect("\n\n"));
+  let metadata = split(chunk_head, "\n");
+  let (head, meta_tail) = uncons(metadata);
+  let mut pktHead:~str;
+  let mut pktParam:Option<~str> = None;
+  let mut pktArgs:HashMap<~str, ~str> = linear_map_with_capacity(8);
   match split(head, " ") {
-    [] => fail!(~"impossible"),
+    [] => fail!("impossible"),
     [x] => pktHead = x,
     [x,y,.._] => { pktHead = x; pktParam = Some(y) }
   }
-  match vec::tail(metadata) {
+  match meta_tail {
     [] => {},
     xs => {
-      let pairs = do vec::map(xs) |x| { splitn_char(*x, '=', 1) };
-      for vec::each(pairs) |pair| {
-        if vec::len(*pair) == 2 {
-          pktArgs.insert(copy pair[0], copy pair[1])
+      let pairs = do xs.map |x| { splitn_char(*x, '=', 1) };
+      foreach pair in pairs.iter() {
+        if pair.len() == 2 {
+          pktArgs.insert(pair[0].to_owned(), pair[1].to_owned())
         } else {
           false
         };
@@ -47,7 +58,7 @@ pub fn parse(pkt: ~str) -> ~Packet {
     command: pktHead,
     param: pktParam,
     args: pktArgs,
-    body: if vec::len(chunks) == 1 {
+    body: if chunknum == 1 {
       None
     } else {
       Some(body)
