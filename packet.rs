@@ -30,7 +30,7 @@ fn unconsf(m: ~[~str], h: &fn(~str) -> ~str, t: &fn(~[~str]) -> ~str) -> (~str, 
 pub fn parse(pkt: ~str) -> ~Packet {
   let chunks = split(pkt, "\n\n");
   let chunknum = chunks.len();
-  let (body, chunk_head) = unconsf(chunks, |n| n, |m| m.connect("\n\n"));
+  let (chunk_head, body) = unconsf(chunks, |n| n, |m| m.connect("\n\n"));
   let metadata = split(chunk_head, "\n");
   let (head, meta_tail) = uncons(metadata);
   let mut pktHead:~str;
