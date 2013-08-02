@@ -16,15 +16,14 @@ fn splitn_char(st: &str, sep: char, count: uint) -> ~[~str] {
 }
 
 fn uncons(m: ~[~str]) -> (~str, ~[~str]) {
-  match m {
-    [] => fail!("Impossibru!"),
-    [ref x, ..ys] => (x.to_owned(), ys.to_owned())
-  }
+  let mut m = m;
+  let h = m.pop();
+  (h, m)
 }
 
 fn unconsf(m: ~[~str], h: &fn(~str) -> ~str, t: &fn(~[~str]) -> ~str) -> (~str, ~str) {
-  let (h_, t_) = uncons(m);
-  (h(h_), t(t_))
+  let (hh, tt) = uncons(m);
+  (h(hh), t(tt))
 }
 
 pub fn parse(pkt: ~str) -> ~Packet {
@@ -45,13 +44,15 @@ pub fn parse(pkt: ~str) -> ~Packet {
     [] => {},
     xs => {
       let pairs = do xs.map |x| { splitn_char(*x, '=', 1) };
-      foreach pair in pairs.iter() {
+      foreach pair in pairs.consume_iter() {
+        let mut pair = pair;
         if pair.len() == 2 {
-          pktArgs.insert(pair[0].to_owned(), pair[1].to_owned())
+          let f = pair.pop(); // determinism!!!
+          pktArgs.insert(f, pair.pop())
         } else {
           false
         };
-      }
+      };
     }
   }
   ~Packet {
