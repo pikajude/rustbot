@@ -16,6 +16,13 @@ fn react(damn: ~Damn) {
       ~"dAmnServer" => {
         damn.write(~"login alphacookie\npk=3368b2f8338df98e7cdbe3b9cd8b34ec");
       }
+      ~"login" => {
+        if pk.ok() {
+          println("we are logged in!");
+        } else {
+          println("we are not logged in!");
+        }
+      }
       _ => {}
     }
   }

@@ -8,6 +8,14 @@ pub struct Packet {
 }
 
 impl Packet {
+  pub fn ok(&self) -> bool {
+    match self.args.find(&~"e") {
+      Some(&~"ok") => true,
+      None => true,
+      _ => false
+    }
+  }
+
   pub fn subpacket(&self) -> Option<~Packet> {
     do self.body.map |bod| { parse(bod.clone()) }
   }
@@ -35,7 +43,7 @@ fn split(st: ~str, sep: &'static str) -> ~[~str] {
   do st.split_str_iter(sep).to_owned_vec().map |x| { x.to_owned() }
 }
 
-fn splitn_char(st: &str, sep: char, count: uint) -> ~[~str] {
+fn splitn_char(st: ~str, sep: char, count: uint) -> ~[~str] {
   do st.splitn_iter(sep, count).to_owned_vec().map |x| { x.to_owned() }
 }
 
@@ -67,9 +75,8 @@ pub fn parse(pkt: ~str) -> ~Packet {
   match meta_tail {
     [] => {},
     xs => {
-      let pairs = do xs.map |x| { splitn_char(*x, '=', 1) };
-      foreach pair in pairs.consume_iter() {
-        let mut pair = pair;
+      foreach x in xs.consume_iter() {
+        let mut pair = splitn_char(x, '=', 1);
         if pair.len() == 2 {
           let f = pair.shift(); // determinism!!!
           pktArgs.insert(f, pair.shift())
