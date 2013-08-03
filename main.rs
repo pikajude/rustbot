@@ -1,16 +1,16 @@
 extern mod std;
 
 use damn::Damn;
+use packet::Packet;
 
 mod damn;
 mod packet;
-// mod protocol;
 
 fn react(damn: ~Damn) {
   let mut damn = damn;
   damn.write(~"dAmnClient 0.3\nagent=rustbot 0.1");
   loop {
-    let pk = packet::parse(damn.read());
+    let pk = Packet::parse(damn.read());
     println(fmt!("%?", pk));
     match pk.command {
       ~"dAmnServer" => {
@@ -29,8 +29,8 @@ fn react(damn: ~Damn) {
 }
 
 fn main() {
-  match damn::make_damn() {
+  match Damn::make() {
     Some(v) => react(v),
-    _ => {}
+    None => println("Failed to connect to the server. Sorry!")
   }
 }

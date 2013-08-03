@@ -20,15 +20,12 @@ impl Damn {
     let len = self.sock.read(buf).unwrap();
     str::from_bytes(buf.slice_to(len))
   }
-}
 
-pub fn make_damn() -> Option<~Damn> {
-  // init_tls_key();
-  let maybe_tcp = TcpStream::connect(Ipv4(199, 15, 160, 100, 3900));
-  match maybe_tcp {
-    Some(sock) => {
-      Some(~Damn { sock: sock })
-    }
-    None => None
+  pub fn new(stream: TcpStream) -> Damn {
+    Damn { sock: stream }
+  }
+
+  pub fn make() -> Option<~Damn> {
+    do TcpStream::connect(Ipv4(199, 15, 160, 100, 3900)).map_consume |s| { ~Damn::new(s) }
   }
 }
