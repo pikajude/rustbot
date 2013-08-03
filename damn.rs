@@ -1,9 +1,8 @@
 extern mod extra;
 
-use std::rt::io::net::tcp::*;
 use std::rt::io::net::ip::{Ipv4};
+use std::rt::io::net::tcp::*;
 use std::rt::io::{Reader,Writer};
-use std::result;
 use std::str;
 
 pub struct Damn {
@@ -17,26 +16,19 @@ impl Damn {
   }
 
   pub fn read(&mut self) -> ~str {
-    let buf = &mut [];
-    self.sock.read(buf);
-    str::from_bytes(buf)
+    let mut buf = ~[0, .. 8192];
+    let len = self.sock.read(buf).unwrap();
+    str::from_bytes(buf.slice_to(len))
   }
 }
 
-fn main() {
-  println(fmt!("%s", Ipv4(194, 199, 94, 211, 80).to_str()));
+pub fn make_damn() -> Option<~Damn> {
+  // init_tls_key();
+  let maybe_tcp = TcpStream::connect(Ipv4(199, 15, 160, 100, 3900));
+  match maybe_tcp {
+    Some(sock) => {
+      Some(~Damn { sock: sock })
+    }
+    None => None
+  }
 }
-
-pub fn make_damn() -> result::Result<~Damn, ~str> {
-  Err(~"fuck")
-}
-
-// pub fn make_damn() -> result::Result<~Damn, TcpConnectErrData> {
-//   let curTask = &std::uv::global_loop::get();
-//   let ips = unwrap(std::net_ip::get_addr("chat.deviantart.com", curTask));
-//   let wrapped_sock = connect(ips[0], 3900, curTask);
-//   match wrapped_sock {
-//     Ok(s) => Ok(~Damn { sock: socket_buf(s) }),
-//     Err(v) => Err(v)
-//   }
-// }

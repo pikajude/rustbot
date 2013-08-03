@@ -7,6 +7,30 @@ pub struct Packet {
   body: Option<~str>
 }
 
+impl Packet {
+  pub fn subpacket(&self) -> Option<~Packet> {
+    do self.body.map |bod| { parse(bod.clone()) }
+  }
+
+  pub fn subpacket_consume(~self) -> Option<~Packet> {
+    do self.body.map_consume |bod| { parse(bod) }
+  }
+
+  pub fn subpacket_(&self) -> ~Packet {
+    match self.body.clone() {
+      None => fail!("Tried to unwrap None"),
+      Some(v) => parse(v)
+    }
+  }
+
+  pub fn subpacket_consume_(~self) -> ~Packet {
+    match self.body {
+      None => fail!("Tried to unwrap None"),
+      Some(v) => parse(v)
+    }
+  }
+}
+
 fn split(st: ~str, sep: &'static str) -> ~[~str] {
   do st.split_str_iter(sep).to_owned_vec().map |x| { x.to_owned() }
 }
@@ -17,7 +41,7 @@ fn splitn_char(st: &str, sep: char, count: uint) -> ~[~str] {
 
 fn uncons(m: ~[~str]) -> (~str, ~[~str]) {
   let mut m = m;
-  let h = m.pop();
+  let h = m.shift();
   (h, m)
 }
 
@@ -34,7 +58,7 @@ pub fn parse(pkt: ~str) -> ~Packet {
   let (head, meta_tail) = uncons(metadata);
   let mut pktHead:~str;
   let mut pktParam:Option<~str> = None;
-  let mut pktArgs:HashMap<~str, ~str> = linear_map_with_capacity(8);
+  let mut pktArgs:HashMap<~str, ~str> = linear_map_with_capacity(4);
   match split(head, " ") {
     [] => fail!("impossible"),
     [x] => pktHead = x,
@@ -47,8 +71,8 @@ pub fn parse(pkt: ~str) -> ~Packet {
       foreach pair in pairs.consume_iter() {
         let mut pair = pair;
         if pair.len() == 2 {
-          let f = pair.pop(); // determinism!!!
-          pktArgs.insert(f, pair.pop())
+          let f = pair.shift(); // determinism!!!
+          pktArgs.insert(f, pair.shift())
         } else {
           false
         };
