@@ -1,36 +1,35 @@
-extern mod std;
+extern mod extra;
 
 use damn::Damn;
 use packet::Packet;
+use protocol::*;
+use std::os;
 
+mod color;
 mod damn;
 mod packet;
+mod protocol;
 
-fn react(damn: ~Damn) {
-  let mut damn = damn;
+fn main() {
+  let mut damn = Damn::make().unwrap();
   damn.write(~"dAmnClient 0.3\nagent=rustbot 0.1");
   loop {
     let pk = Packet::parse(damn.read());
-    println(fmt!("%?", pk));
-    match pk.command {
-      ~"dAmnServer" => {
-        damn.write(~"login alphacookie\npk=3368b2f8338df98e7cdbe3b9cd8b34ec");
+    let failure = match pk.command {
+      ~"dAmnServer" => r_dAmnServer(damn, pk),
+      ~"login" => r_login(damn, pk),
+      _ => {
+        println(fmt!("%?", pk));
+        Some(fmt!("Unhandled packet %s", pk.command))
       }
-      ~"login" => {
-        if pk.ok() {
-          println("we are logged in!");
-        } else {
-          println("we are not logged in!");
-        }
+    };
+    match failure {
+      Some(e) => {
+        printfln!("Something went wrong! %s", e);
+        os::set_exit_status(1);
+        break
       }
       _ => {}
     }
-  }
-}
-
-fn main() {
-  match Damn::make() {
-    Some(v) => react(v),
-    None => println("Failed to connect to the server. Sorry!")
   }
 }
