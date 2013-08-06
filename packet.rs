@@ -1,6 +1,7 @@
 use std::hashmap::*;
 use std::util;
 
+#[deriving(Clone)]
 pub struct Packet {
   command: ~str,
   param: Option<~str>,
@@ -49,7 +50,7 @@ impl Packet {
     let (head, meta_tail) = uncons(metadata);
     let mut pktHead:~str;
     let mut pktParam:Option<~str> = None;
-    let mut pktArgs:HashMap<~str, ~str> = linear_map_with_capacity(4);
+    let mut pktArgs:HashMap<~str, ~str> = HashMap::with_capacity(4);
     match split(head, " ") {
       [] => util::unreachable(),
       [x] => pktHead = x,
@@ -58,7 +59,7 @@ impl Packet {
     match meta_tail {
       [] => {},
       xs => {
-        foreach x in xs.consume_iter() {
+        for x in xs.consume_iter() {
           let mut pair = splitn_char(x, '=', 1);
           if pair.len() == 2 {
             let f = pair.shift(); // determinism!!!
