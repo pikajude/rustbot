@@ -2,11 +2,12 @@ extern mod extra;
 
 use extra::par;
 use std::cell::Cell;
-use std::comm::*;
-use std::pipes::*;
-use std::rt::io::net::ip::*;
+use std::rt::comm::*;
+use std::rt::io::net::ip::{Ipv4Addr,SocketAddr};
+use std::rt::select;
 use std::rt::io::net::tcp::*;
 use std::rt::io::{Reader,Writer};
+use std::rand::*;
 // use std::rt::io::comm_adapters::{ReaderPort,WriterChan};
 use std::str;
 
@@ -75,22 +76,23 @@ impl Damn {
 
 impl Bot {
   pub fn make() -> ~Bot {
-    // let mut d = Damn::make().unwrap();
+    // let d = Damn::make().unwrap();
     let (out, in_) = stream();
-    let (sock_out, sock_in) = stream(); // (ReaderPort::new(d.sock), WriterChan::new(d.sock));
+    let (sock_out, sock_in) = stream();
     let (shared_in, shared_sock_in) = (SharedChan::new(in_), SharedChan::new(sock_in));
     let output_cell = Cell::new(~[out, sock_out]);
     do spawn {
-      let mut outs = output_cell.take();
+      let mut outs:~[Port<~str>] = output_cell.take();
       loop {
-        match wait_many(outs) {
-          0 => printfln!("A has data!"),
-          _ => printfln!("B has data!")
+        let ix = select::select(outs);
+        match ix {
+          0 => print("A has data: "),
+          _ => print("B has data: ")
         }
+        let s:~str = outs[ix].recv();
+        println(s);
       }
     }
-    shared_in.send(~"hello");
-    shared_sock_in.send(~"hello");
     ~Bot {
       hooks: ~[],
       in_pipe: shared_in,
@@ -117,5 +119,8 @@ impl Bot {
 
 fn main() {
   let mut bot = Bot::make();
-  println("success!");
+  loop {
+    bot.in_pipe.send(~"msg to in pipe");
+    bot.sock_in.send(~"msg to socket");
+  }
 }
