@@ -31,7 +31,7 @@ impl Packet {
   }
 
   pub fn subpacket_consume(~self) -> Option<~Packet> {
-    do self.body.map_consume |bod| { Packet::parse(bod) }
+    do self.body.map_move |bod| { Packet::parse(bod) }
   }
 
   pub fn subpacket_(&self) -> ~Packet {
@@ -59,7 +59,7 @@ impl Packet {
     match meta_tail {
       [] => {},
       xs => {
-        for x in xs.consume_iter() {
+        for x in xs.move_iter() {
           let mut pair = splitn_char(x, '=', 1);
           if pair.len() == 2 {
             let f = pair.shift(); // determinism!!!
@@ -84,11 +84,11 @@ impl Packet {
 }
 
 fn split(st: ~str, sep: &'static str) -> ~[~str] {
-  st.split_str_iter(sep).transform(|x| x.to_owned()).to_owned_vec()
+  st.split_str_iter(sep).map(|x| x.to_owned()).to_owned_vec()
 }
 
 fn splitn_char(st: ~str, sep: char, count: uint) -> ~[~str] {
-  st.splitn_iter(sep, count).transform(|x| x.to_owned()).to_owned_vec()
+  st.splitn_iter(sep, count).map(|x| x.to_owned()).to_owned_vec()
 }
 
 fn uncons(m: ~[~str]) -> (~str, ~[~str]) {
