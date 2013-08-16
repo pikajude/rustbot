@@ -1,24 +1,18 @@
 extern mod extra;
 
-use extra::future;
-use std::cell::{Cell};
-use std::hashmap::{HashMap};
-// use std::rand::*;
-use std::comm::{SharedChan,Port};
+use color::*;
+use packet::{Packet};
 use std::rt::io::net::ip::{IpAddr,SocketAddr};
 use std::rt::io::net::tcp::{TcpStream};
 use std::rt::io::{Reader,Writer};
-use std::select;
 use std::str;
 
-use packet::{Packet};
-
+mod color;
 mod packet;
 
 pub struct Bot {
   hooks: ~[~Hook],
-  in_pipe: SharedChan<~str>,
-  sock_in: SharedChan<~str>
+  damn: ~Damn
 }
 
 pub struct Hook {
@@ -38,7 +32,7 @@ impl Clone for Hook {
 }
 
 impl Hook {
-  pub fn execute(&self, damn: SharedChan<~str>, pkt: ~Packet) -> Option<(~str, ~str)> {
+  pub fn execute(&self, damn: &mut Damn, pkt: &Packet) -> Option<(~str, ~str)> {
     if self.trigger == pkt.command {
       do (self.f)(damn, pkt).map_move |res| { (self.trigger.to_owned(), res) }
     } else {
@@ -74,79 +68,46 @@ impl Damn {
 
 impl Bot {
   pub fn make() -> ~Bot {
-    // let d = Damn::make().unwrap();
-    let (out, in_) = stream();
-    let (sock_out, sock_in) = stream(); // d.sock;
-    let (shared_in, shared_sock_in) = (SharedChan::new(in_), SharedChan::new(sock_in));
-    let output_cell = Cell::new(~[sock_out, out]);
-    do spawn {
-      let mut outs:~[Port<~str>] = output_cell.take();
-      loop {
-        let ix = select::select(outs);
-        if outs[ix].peek() {
-          println(outs[ix].recv());
-        } else {
-          printfln!("Pipe %u reported true but has no data.", ix);
-        }
-      }
-    }
+    let d = Damn::make().unwrap();
     ~Bot {
       hooks: ~[],
-      in_pipe: shared_in,
-      sock_in: shared_sock_in
+      damn: d
     }
   }
 
   pub fn write(&mut self, pkt: ~str) {
-    self.in_pipe.send(pkt);
+    self.damn.write(pkt);
+  }
+
+  pub fn read_pkt(&mut self) -> ~Packet {
+    Packet::parse(self.damn.read())
   }
 
   pub fn hook(&mut self, trigger: ~str, f: Callback) {
     self.hooks.push(~Hook { trigger: trigger, f: f })
   }
 
-  pub fn react(&mut self, pkt: ~Packet) -> ~[Option<(~str,~str)>] {
-    let pkt_cell = Cell::new(pkt.clone());
-    let pipe_cell = Cell::new(self.sock_in.clone());
-    let futures:~[future::Future<Option<(~str,~str)>>] = do self.hooks.iter().map |hook| {
-      let mypkt = pkt_cell.take();
-      pkt_cell.put_back(mypkt.clone());
-      let mypktcell = Cell::new(mypkt);
-      let mypipe = pipe_cell.take();
-      pipe_cell.put_back(mypipe.clone());
-      let mypipecell = Cell::new(mypipe);
-      let h = hook.clone();
-      do extra::future::spawn {
-        h.execute(mypipecell.take(), mypktcell.take())
-      }
-    }.collect();
-    futures.move_iter().map(|x| { let mut y = x; y.get() }).collect()
+  pub fn react(&mut self, pkt: &Packet) -> ~[Option<(~str,~str)>] {
+    do self.hooks.iter().map |hook| {
+      hook.execute(self.damn, pkt)
+    }.collect()
   }
 }
 
-type Callback = extern fn(SharedChan<~str>, ~Packet) -> Option<~str>;
+type Callback = extern fn(&mut Damn, &Packet) -> Option<~str>;
 
-fn reactor(damn: SharedChan<~str>, pkt: ~Packet) -> Option<~str> {
-  damn.send(fmt!("From handle pipe: %?", pkt));
+fn login(d: &mut Damn, p: &Packet) -> Option<~str> {
+  d.write(~"login participle\npk=53d8fc2eda3a1719737e031d938b3de8");
   None
 }
 
 fn main() {
   let mut bot = Bot::make();
-  let mut args = HashMap::new();
-  args.insert(~"a", ~"b");
-  args.insert(~"c", ~"d");
-  bot.hook(~"dAmnServer", reactor);
-  bot.hook(~"dAmnServer", reactor);
-  bot.hook(~"dAmnServer", reactor);
-  bot.hook(~"dAmnServer", reactor);
-  bot.hook(~"dAmnServer", reactor);
-  bot.react(~Packet {
-    command: ~"dAmnServer",
-    param: Some(~"0.3"),
-    args: args,
-    body: None
-  });
-  bot.in_pipe.send(~"From sock pipe: ello m8s");
-  std::io::stdin().read_line();
+  bot.hook(~"dAmnServer", login);
+  bot.write(~"dAmnClient 0.3\nagent=rustbot 0.1");
+  loop {
+    let pkt = bot.read_pkt();
+    printfln!("%?", pkt);
+    bot.react(pkt);
+  }
 }
