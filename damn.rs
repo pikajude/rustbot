@@ -2,7 +2,7 @@ extern mod extra;
 
 use color::*;
 use packet::{Packet};
-use std::rt::io::net::ip::{IpAddr,SocketAddr};
+use std::rt::io::net::ip::{SocketAddr};
 use std::rt::io::net::tcp::{TcpStream};
 use std::rt::io::{Reader,Writer};
 use std::str;
@@ -54,12 +54,12 @@ impl Damn {
   pub fn read(&mut self) -> ~str {
     let mut buf = ~[0, .. 8192];
     let len = self.sock.read(buf).unwrap();
-    str::from_bytes(buf.slice_to(len))
+    str::from_utf8(buf.slice_to(len))
   }
 
   pub fn make() -> Option<~Damn> {
     let addr = SocketAddr {
-      ip: FromStr::from_str::<IpAddr>("199.15.160.100").unwrap(),
+      ip: FromStr::from_str("199.15.160.100").unwrap(),
       port: 3900
     };
     do TcpStream::connect(addr).map_move |s| { ~Damn { sock: s } }

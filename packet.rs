@@ -1,5 +1,4 @@
 use std::hashmap::*;
-use std::util;
 
 #[deriving(Clone)]
 pub struct Packet {
@@ -52,7 +51,7 @@ impl Packet {
     let mut pktParam:Option<~str> = None;
     let mut pktArgs:HashMap<~str, ~str> = HashMap::with_capacity(4);
     match split(head, " ") {
-      [] => util::unreachable(),
+      [] => unreachable!(),
       [x] => pktHead = x,
       [x,y,.._] => { pktHead = x; pktParam = Some(y) }
     }
