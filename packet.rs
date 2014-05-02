@@ -1,6 +1,9 @@
-use std::hashmap::*;
+extern crate collections;
+
+use self::collections::hashmap::{HashMap};
 
 #[deriving(Clone)]
+#[deriving(Show)]
 pub struct Packet {
   command: ~str,
   param: Option<~str>,
@@ -11,9 +14,8 @@ pub struct Packet {
 impl Packet {
   pub fn ok(&self) -> bool {
     match self.args.find(&~"e") {
-      Some(&~"ok") => true,
-      None => true,
-      _ => false
+      Some(x) => x.eq(&~"ok"),
+      None => true
     }
   }
 
@@ -26,18 +28,18 @@ impl Packet {
   }
 
   pub fn subpacket(&self) -> Option<~Packet> {
-    do self.body.map |bod| { Packet::parse(bod.clone()) }
+    self.body.clone().map(|bod| { Packet::parse(bod) })
   }
 
-  pub fn subpacket_consume(~self) -> Option<~Packet> {
-    do self.body.map_move |bod| { Packet::parse(bod) }
+  pub fn subpacket_move(~self) -> Option<~Packet> {
+    self.body.map(|bod| { Packet::parse(bod) })
   }
 
   pub fn subpacket_(&self) -> ~Packet {
     Packet::parse(self.body.clone().unwrap())
   }
 
-  pub fn subpacket_consume_(~self) -> ~Packet {
+  pub fn subpacket_move_(~self) -> ~Packet {
     Packet::parse(self.body.unwrap())
   }
 
@@ -50,24 +52,23 @@ impl Packet {
     let mut pktHead:~str;
     let mut pktParam:Option<~str> = None;
     let mut pktArgs:HashMap<~str, ~str> = HashMap::with_capacity(4);
-    match split(head, " ") {
+    match split(head, " ").as_slice() {
       [] => unreachable!(),
-      [x] => pktHead = x,
-      [x,y,.._] => { pktHead = x; pktParam = Some(y) }
+      [ref x] => pktHead = x.to_owned(),
+      [ref x,ref y,..] => { pktHead = x.to_owned(); pktParam = Some(y.to_owned()) }
     }
-    match meta_tail {
-      [] => {},
-      xs => {
-        for x in xs.move_iter() {
-          let mut pair = splitn_char(x, '=', 1);
-          if pair.len() == 2 {
-            let f = pair.shift(); // determinism!!!
-            pktArgs.insert(f, pair.shift())
-          } else {
-            false
-          };
-        };
-      }
+    for x in meta_tail.move_iter() {
+      let mut pair = splitn_char(x, '=', 1);
+      if pair.len() == 2 {
+        let key = pair.shift(); // determinism!!!
+        let value = pair.shift();
+        match (key, value) {
+          (Some(k), Some(v)) => pktArgs.insert(k, v),
+          _ => fail!("One of key or value was not found!")
+        }
+      } else {
+        false
+      };
     }
     ~Packet {
       command: pktHead,
@@ -83,20 +84,22 @@ impl Packet {
 }
 
 fn split(st: ~str, sep: &'static str) -> ~[~str] {
-  st.split_str_iter(sep).map(|x| x.to_owned()).to_owned_vec()
+  st.split_str(sep).map(|x| x.to_owned()).collect()
 }
 
 fn splitn_char(st: ~str, sep: char, count: uint) -> ~[~str] {
-  st.splitn_iter(sep, count).map(|x| x.to_owned()).to_owned_vec()
+  st.splitn(sep, count).map(|x| x.to_owned()).collect()
 }
 
 fn uncons(m: ~[~str]) -> (~str, ~[~str]) {
   let mut m = m;
-  let h = m.shift();
-  (h, m)
+  match m.shift() {
+    Some(s) => (s, m),
+    None => fail!("empty vector given to uncons")
+  }
 }
 
-fn unconsf<a,b>(m: ~[~str], h: &fn(~str) -> a, t: &fn(~[~str]) -> b) -> (a,b) {
+fn unconsf<a,b>(m: ~[~str], h: |~str| -> a, t: |~[~str]| -> b) -> (a,b) {
   let (head, tail) = uncons(m);
   (h(head), t(tail))
 }
