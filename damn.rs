@@ -1,12 +1,24 @@
-use color::red;
-use packet::{Packet};
+#![feature(macro_rules)]
+
+extern crate time;
+
+use color::{green,magenta};
+pub use packet::{Packet};
 use std::io::net::ip::{SocketAddr};
 use std::io::net::tcp::{TcpStream};
 use std::io::{Reader,Writer};
 use std::str;
+use time::{strftime,now};
 
 mod color;
 mod packet;
+
+macro_rules! log(
+  ($s:expr) => (println!("\x1b[30m{}\x1b[0m {}", time::strftime("%b %d %H:%M:%S", time::now()), $s));
+  ($s:expr, $($m:expr),+) => (println!("\x1b[30m{}\x1b[0m {}", time::strftime("%b %d %H:%M:%S", &time::now()), format!($s, $($m),+)))
+)
+
+macro_rules! failure (($($s:expr),+) => (Some(format!($($s),+))))
 
 pub struct Bot {
   hooks: ~[~Hook],
@@ -107,17 +119,18 @@ impl Bot {
 
 pub type Callback = fn(&mut Damn, &Packet) -> Option<~str>;
 
-fn login(d: &mut Damn, _p: &Packet) -> Option<~str> {
+fn login(d: &mut Damn, p: &Packet) -> Option<~str> {
+  log!("Greeting from server: dAmnServer {}", magenta(p.param()));
   d.write(~"login formerly-aughters\npk=5503203bc1ded20fed5f669200ea39f6");
   None
 }
 
-fn login_callback(d: &mut Damn, p: &Packet) -> Option<~str> {
+fn login_callback(_d: &mut Damn, p: &Packet) -> Option<~str> {
   if p.ok() {
-    println!("{}", red("logged in successfully"));
+    log!("Logged in as {}", green(p.param()));
     None
   } else {
-    Some(~"login failure")
+    failure!("Login failure: {}", p.args.get(&~"e"))
   }
 }
 
