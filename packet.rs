@@ -3,12 +3,23 @@ extern crate collections;
 use self::collections::hashmap::{HashMap};
 
 #[deriving(Clone)]
+#[deriving(Eq)]
+#[deriving(Show)]
+pub enum PacketType {
+  DamnServer,
+  Login
+}
+
+pub type ByteString = Vec<u8>;
+pub type Text = StrBuf;
+
+#[deriving(Clone)]
 #[deriving(Show)]
 pub struct Packet {
-  pub command: StrBuf,
-  pub param: Option<StrBuf>,
-  pub args: HashMap<StrBuf, StrBuf>,
-  pub body: Option<StrBuf>
+  pub command: PacketType,
+  pub param: Option<Text>,
+  pub args: HashMap<Text, Text>,
+  pub body: Option<ByteString>
 }
 
 impl Packet {
@@ -23,75 +34,102 @@ impl Packet {
     self.param.clone().unwrap()
   }
 
-  pub fn body(&self) -> StrBuf {
+  pub fn body(&self) -> Vec<u8> {
     self.body.clone().unwrap()
   }
 
-  pub fn subpacket(&self) -> Option<~Packet> {
-    self.body.clone().map(|bod| { Packet::parse(bod) })
+  /// Tries to parse `body` as a subpacket.
+  pub fn subpacket(&self) -> Option<Packet> {
+    self.body.clone().map(|bod| { Packet::parse(bod.as_slice()) })
   }
 
-  pub fn subpacket_move(~self) -> Option<~Packet> {
-    self.body.map(|bod| { Packet::parse(bod) })
+  /// Tries to parse `body` as a subpacket, consuming `self` in the process.
+  pub fn subpacket_move(~self) -> Option<Packet> {
+    self.body.map(|bod| { Packet::parse(bod.as_slice()) })
   }
 
-  pub fn subpacket_(&self) -> ~Packet {
-    Packet::parse(self.body.clone().unwrap())
+  fn cmd_to_type(x: &[u8]) -> PacketType {
+    match x {
+      [100, 65, 109, 110, 83, 101, 114, 118, 101, 114] => DamnServer,
+      [108, 111, 103, 105, 110] => Login,
+      e => fail!("unknown type: {}", e)
+    }
   }
 
-  pub fn subpacket_move_(~self) -> ~Packet {
-    Packet::parse(self.body.unwrap())
-  }
-
-  pub fn parse(pkt: StrBuf) -> ~Packet {
-    let chunks = split(pkt, "\n\n");
+  pub fn parse(pkt: &[u8]) -> Packet {
+    let chunks:Vec<ByteString> = split_vec(pkt, [10, 10]);
     let chunknum = chunks.len();
-    let (chunk_head, body) = unconsf(chunks, |n| n, |m| m.connect("\n\n"));
-    let metadata = split(chunk_head, "\n");
-    let (head, meta_tail) = uncons(metadata);
-    let mut pktHead:StrBuf;
+    let (chunk_head, body) = unconsf(chunks, |n| n, |m| connect_vec(m, [10, 10]));
+    let metadata:Vec<&[u8]> = chunk_head.as_slice().split(|x| *x == 10).collect();
+    let (head, meta_tail):(&[u8], Vec<&[u8]>) = uncons(metadata);
+    let mut pktHead:PacketType;
     let mut pktParam:Option<StrBuf> = None;
-    let mut pktArgs:HashMap<StrBuf, StrBuf> = HashMap::with_capacity(4);
-    match split(head, " ").as_slice() {
+    let mut pktArgs:HashMap<Text, Text> = HashMap::with_capacity(4);
+    let heads:Vec<&[u8]> = head.as_slice().split(|x:&u8| *x == 32).collect();
+    match heads.as_slice() {
       [] => unreachable!(),
-      [ref x] => pktHead = x.to_strbuf(),
-      [ref x,ref y,..] => { pktHead = x.to_strbuf(); pktParam = Some(y.to_strbuf()) }
+      [x] => pktHead = Packet::cmd_to_type(x),
+      [x,y,..] => {
+        pktHead = Packet::cmd_to_type(x);
+        pktParam = Some(StrBuf::from_utf8(Vec::from_slice(y)).unwrap())
+      }
     }
     for x in meta_tail.move_iter() {
-      let mut pair = splitn_char(x, '=', 1);
+      let mut pair:Vec<&[u8]> = x.as_slice().splitn(1, |x:&u8| *x == 61).collect();
       if pair.len() == 2 {
         let key = pair.shift(); // determinism!!!
         let value = pair.shift();
         match (key, value) {
-          (Some(k), Some(v)) => pktArgs.insert(k, v),
+          (Some(k), Some(v)) => pktArgs.insert(StrBuf::from_utf8(Vec::from_slice(k)).unwrap(), StrBuf::from_utf8(Vec::from_slice(v)).unwrap()),
           _ => fail!("One of key or value was not found!")
         }
       } else {
         false
       };
     }
-    ~Packet {
+    Packet {
       command: pktHead,
       param: pktParam,
       args: pktArgs,
       body: if chunknum == 1 {
         None
       } else {
-        Some(body.to_strbuf())
+        Some(body)
       }
     }
   }
 }
 
-fn split(st: StrBuf, sep: &'static str) -> Vec<StrBuf> {
-  st.as_slice().split_str(sep).map(|x|StrBuf::from_str(x)).collect()
+fn split_vec<T:Eq + Clone>(st: &[T], sep: &[T]) -> Vec<Vec<T>> {
+  let len = st.len();
+  let mut current = Vec::new();
+  let mut results = Vec::new();
+  let mut l = 0;
+  while l < len {
+    if st.slice_from(l).starts_with(sep) {
+      results.push(current.clone());
+      l += sep.len();
+      current = Vec::new();
+    } else {
+      current.push(st[l].clone());
+      l += 1;
+    }
+  }
+  results.push(current.clone());
+  results
 }
 
-fn splitn_char(st: StrBuf, sep: char, count: uint) -> Vec<StrBuf> {
-  st.as_slice().splitn(sep, count).map(|x|StrBuf::from_str(x)).collect()
+fn connect_vec<T: Clone>(st: Vec<Vec<T>>, sep: &[T]) -> Vec<T> {
+  let mut out = Vec::new();
+  out = out.append(st.get(0).as_slice());
+  for l in range(1, st.len()) {
+    out = out.append(sep);
+    out = out.append(st.get(l).as_slice());
+  }
+  out
 }
 
-fn uncons(m: Vec<StrBuf>) -> (StrBuf, Vec<StrBuf>) {
+fn uncons<V>(m: Vec<V>) -> (V, Vec<V>) {
   let mut m = m;
   match m.shift() {
     Some(s) => (s, m),
@@ -99,7 +137,7 @@ fn uncons(m: Vec<StrBuf>) -> (StrBuf, Vec<StrBuf>) {
   }
 }
 
-fn unconsf<a,b>(m: Vec<StrBuf>, h: |StrBuf| -> a, t: |Vec<StrBuf>| -> b) -> (a,b) {
+fn unconsf<a,b,V>(m: Vec<V>, h: |V| -> a, t: |Vec<V>| -> b) -> (a,b) {
   let (head, tail) = uncons(m);
   (h(head), t(tail))
 }

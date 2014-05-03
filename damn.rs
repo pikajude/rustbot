@@ -1,14 +1,17 @@
 #![crate_id="rustbot"]
 #![feature(macro_rules)]
+#![feature(globs)]
 
 extern crate time;
 
 use color::{green,magenta};
-pub use packet::{Packet};
+pub use packet::*;
 use std::io::net::ip::{SocketAddr};
 use std::io::net::tcp::{TcpStream};
 use std::io::net::addrinfo::get_host_addresses;
 use std::io::{Reader,Writer,IoResult};
+use std::io::stdio::{stderr};
+use std::os;
 use std::strbuf::StrBuf;
 use time::{strftime,now};
 
@@ -21,32 +24,43 @@ macro_rules! log(
 )
 
 macro_rules! failure(($($s:expr),+) => (Some(format!($($s),+).to_strbuf())))
+macro_rules! warn(($($arg:tt),+) => ({
+  stderr().write(format!($($arg),+).as_bytes()).and_then(|_| {
+    stderr().write(&[10])
+  })
+}))
 
 pub struct Bot {
-  pub hooks: Vec<~Hook>,
-  pub damn: ~Damn
+  hooks: Vec<Hook>,
+  damn: Damn
 }
 
 pub struct Hook {
-  pub trigger: StrBuf,
-  pub f: Callback
+  /// The type of packet this hook reacts to.
+  pub trigger: PacketType,
+  pub callback: Callback
 }
 
+/// NB: clones `trigger` but not `f`.
 impl Clone for Hook {
   fn clone(&self) -> Hook {
     match *self {
-      Hook{trigger: ref t, f: f} => {
+      Hook{trigger: ref t, callback: f} => {
         let f_:Callback = f;
-        Hook{trigger: t.clone(), f: f_}
+        Hook{trigger: t.clone(), callback: f_}
       }
     }
   }
 }
 
 impl Hook {
-  pub fn execute(&self, damn: &mut Damn, pkt: &Packet) -> Option<(StrBuf, StrBuf)> {
+  /**
+    If the command executes successfully, returns `None`. Otherwise
+    returns `Some("reason for failure")`.
+  */
+  pub fn execute(&self, bot: &mut Bot, pkt: &Packet) -> Option<StrBuf> {
     if self.trigger == pkt.command {
-      (self.f)(damn, pkt).map(|res| { (self.trigger.to_strbuf(), res) })
+      (self.callback)(bot, pkt)
     } else {
       None
     }
@@ -58,6 +72,7 @@ pub struct Damn {
 }
 
 impl Damn {
+  /// Write some `u8` to the socket.
   pub fn write(&mut self, string: &[u8]) {
     match self.sock.write(string) {
       Ok(()) => match self.sock.write(&[10, 0]) {
@@ -68,20 +83,27 @@ impl Damn {
     }
   }
 
-  pub fn read(&mut self) -> StrBuf {
-    let buf:&[u8] = [0, ..8192];
-    let vbuf = Vec::from_slice(buf);
-    match StrBuf::from_utf8(vbuf) {
-      Some(s) => s,
-      None => fail!("Decoding error")
-    }
+  fn read(&mut self) -> IoResult<ByteString> {
+    let mut buf = [0, ..8192];
+    self.sock.read(buf).map(|_|Vec::from_slice(buf))
   }
 
-  pub fn make() -> IoResult<~Damn> {
+  /**
+    Produces a Damn. The only error that is likely to happen here is an IO
+    error (when connecting to dAmn.)
+
+    ```
+    match Damn::make() {
+      Ok(mut damn) => do_stuff(),
+      Err(e) => fail!("{}", e)
+    };
+    ```
+  */
+  pub fn make() -> IoResult<Damn> {
     get_host_addresses("chat.deviantart.com").and_then(|s|
       match s.move_iter().next() {
         Some(addr) => TcpStream::connect(SocketAddr { ip: addr, port: 3900 })
-                        .map(|sk| ~Damn { sock: sk }),
+                        .map(|sk| Damn { sock: sk }),
         _ => fail!("No IP resolution for chat.deviantart.com!")
       }
     )
@@ -89,44 +111,45 @@ impl Damn {
 }
 
 impl Bot {
-  pub fn make() -> ~Bot {
-    let d = Damn::make().unwrap();
-    ~Bot {
-      hooks: Vec::new(),
-      damn: d
-    }
+  pub fn make() -> IoResult<Bot> {
+    Damn::make().map(|d|
+      Bot {
+        hooks: Vec::new(),
+        damn: d
+      }
+    )
   }
 
-  pub fn write(&mut self, pkt: &[u8]) {
-    self.damn.write(pkt);
+  pub fn write<T: Str>(&mut self, pkt: T) {
+    self.damn.write(pkt.to_strbuf().as_bytes());
   }
 
-  pub fn read_pkt(&mut self) -> ~Packet {
-    Packet::parse(self.damn.read())
+  pub fn read_pkt(&mut self) -> IoResult<Packet> {
+    self.damn.read().map(|x|Packet::parse(x.as_slice()))
   }
 
-  pub fn hook<T: Str>(&mut self, trigger: T, f: Callback) {
-    self.hooks.push(~Hook { trigger: trigger.to_strbuf(), f: f })
+  pub fn hook(&mut self, trigger: PacketType, f: Callback) {
+    self.hooks.push(Hook { trigger: trigger, callback: f })
   }
 
-  pub fn react(&mut self, pkt: &Packet) -> Vec<Option<(StrBuf,StrBuf)>> {
+  pub fn react(&mut self, pkt: &Packet) -> Vec<Option<StrBuf>> {
     let mut results = Vec::new();
-    for hook in self.hooks.iter() {
-      results.push(hook.execute(self.damn, pkt))
+    for hook in self.hooks.clone().move_iter() {
+      results.push(hook.execute(self, pkt))
     }
     results
   }
 }
 
-pub type Callback = fn(&mut Damn, &Packet) -> Option<StrBuf>;
+pub type Callback = fn(&mut Bot, &Packet) -> Option<StrBuf>;
 
-fn login(d: &mut Damn, p: &Packet) -> Option<StrBuf> {
+fn login(b: &mut Bot, p: &Packet) -> Option<StrBuf> {
   log!("Greeting from server: dAmnServer {}", magenta(p.param()));
-  d.write("login formerly-aughters\npk=5503203bc1ded20fed5f669200ea39f6");
+  b.write("login formerly-aughters\npk=5503203bc1ded20fed5f669200ea39f6");
   None
 }
 
-fn login_callback(_d: &mut Damn, p: &Packet) -> Option<StrBuf> {
+fn login_callback(_b: &mut Bot, p: &Packet) -> Option<StrBuf> {
   if p.ok() {
     log!("Logged in as {}", green(p.param()));
     None
@@ -135,14 +158,25 @@ fn login_callback(_d: &mut Damn, p: &Packet) -> Option<StrBuf> {
   }
 }
 
-fn main() {
-  let mut bot = Bot::make();
-  bot.hook("dAmnServer", login);
-  bot.hook("login", login_callback);
-  bot.write("dAmnClient 0.3\nagent=rustbot 0.1");
-  loop {
-    let pkt = bot.read_pkt();
-    println!("{}", pkt);
-    bot.react(pkt);
+pub fn main() {
+  match Bot::make() {
+    Err(e) => {
+      let _res = warn!("Unable to build the bot: {}", e);
+      os::set_exit_status(1)
+    },
+    Ok(mut bot) => {
+      bot.hook(DamnServer, login);
+      bot.hook(Login, login_callback);
+      bot.write("dAmnClient 0.3\nagent=rustbot 0.1");
+      loop {
+        match bot.read_pkt() {
+          Err(e) => fail!("{}", e),
+          Ok(pkt) => {
+            println!("{}", pkt);
+            bot.react(&pkt);
+          }
+        }
+      }
+    }
   }
 }
