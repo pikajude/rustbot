@@ -4,8 +4,8 @@
 
 extern crate time;
 
-use color::{green,magenta};
-pub use packet::*;
+use color::*;
+use packet::*;
 use std::io::net::ip::{SocketAddr};
 use std::io::net::tcp::{TcpStream};
 use std::io::net::addrinfo::get_host_addresses;
@@ -15,15 +15,15 @@ use std::os;
 use std::strbuf::StrBuf;
 use time::{strftime,now};
 
-mod color;
-mod packet;
+pub mod color;
+pub mod packet;
 
 macro_rules! log(
   ($s:expr) => (println!("\x1b[30m{}\x1b[0m {}", time::strftime("%b %d %H:%M:%S", time::now()), $s));
   ($s:expr, $($m:expr),+) => (println!("\x1b[30m{}\x1b[0m {}", time::strftime("%b %d %H:%M:%S", &time::now()), format!($s, $($m),+)))
 )
 
-macro_rules! failure(($($s:expr),+) => (Some(format!($($s),+).to_strbuf())))
+macro_rules! failure(($($s:expr),+) => (Err(format!($($s),+).to_strbuf())))
 macro_rules! warn(($($arg:tt),+) => ({
   stderr().write(format!($($arg),+).as_bytes()).and_then(|_| {
     stderr().write(&[10])
@@ -53,16 +53,20 @@ impl Clone for Hook {
   }
 }
 
+/// Callbacks may either succeed or provide an error message.
+pub type CallbackResult = Result<(), Text>;
+pub type Callback = fn(&mut Bot, &Packet) -> CallbackResult;
+
 impl Hook {
   /**
-    If the command executes successfully, returns `None`. Otherwise
-    returns `Some("reason for failure")`.
+    If the command executes successfully, returns `Ok(())`. Otherwise
+    returns `Err("reason for failure")`.
   */
-  pub fn execute(&self, bot: &mut Bot, pkt: &Packet) -> Option<StrBuf> {
+  pub fn execute(&self, bot: &mut Bot, pkt: &Packet) -> CallbackResult {
     if self.trigger == pkt.command {
       (self.callback)(bot, pkt)
     } else {
-      None
+      Ok(())
     }
   }
 }
@@ -132,27 +136,27 @@ impl Bot {
     self.hooks.push(Hook { trigger: trigger, callback: f })
   }
 
-  pub fn react(&mut self, pkt: &Packet) -> Vec<Option<StrBuf>> {
+  /// Executes all registered hooks for this packet. Returns a list of
+  /// execution results.
+  pub fn react(&mut self, pkt: &Packet) -> Vec<Result<(), (PacketType, StrBuf)>> {
     let mut results = Vec::new();
     for hook in self.hooks.clone().move_iter() {
-      results.push(hook.execute(self, pkt))
+      results.push(hook.execute(self, pkt).map_err(|e|(hook.trigger, e)))
     }
     results
   }
 }
 
-pub type Callback = fn(&mut Bot, &Packet) -> Option<StrBuf>;
-
-fn login(b: &mut Bot, p: &Packet) -> Option<StrBuf> {
+fn r_dAmnServer(b: &mut Bot, p: &Packet) -> CallbackResult {
   log!("Greeting from server: dAmnServer {}", magenta(p.param()));
   b.write("login formerly-aughters\npk=5503203bc1ded20fed5f669200ea39f6");
-  None
+  Ok(())
 }
 
-fn login_callback(_b: &mut Bot, p: &Packet) -> Option<StrBuf> {
+fn r_login(_b: &mut Bot, p: &Packet) -> CallbackResult {
   if p.ok() {
     log!("Logged in as {}", green(p.param()));
-    None
+    Ok(())
   } else {
     failure!("Login failure: {}", p.args.get(&"e".to_strbuf()))
   }
@@ -165,8 +169,8 @@ pub fn main() {
       os::set_exit_status(1)
     },
     Ok(mut bot) => {
-      bot.hook(DamnServer, login);
-      bot.hook(Login, login_callback);
+      bot.hook(DamnServer, r_dAmnServer);
+      bot.hook(Login, r_login);
       bot.write("dAmnClient 0.3\nagent=rustbot 0.1");
       loop {
         match bot.read_pkt() {

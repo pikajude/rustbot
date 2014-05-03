@@ -24,8 +24,8 @@ pub struct Packet {
 
 impl Packet {
   pub fn ok(&self) -> bool {
-    match self.args.find(&StrBuf::from_str("e")) {
-      Some(x) => *x == StrBuf::from_str("ok"),
+    match self.args.find(&"e".to_strbuf()) {
+      Some(x) => *x == "ok".to_strbuf(),
       None => true
     }
   }
@@ -59,17 +59,13 @@ impl Packet {
   pub fn parse(pkt: &[u8]) -> Packet {
     let chunks = split_vec(pkt, [10, 10]);
     let chunknum = chunks.len();
-    let (chunk_head, body) =
-      unconsf(
-        chunks.as_slice(),
-        |n| n,
-        |m| connect_vec(m.as_slice(), [10, 10]));
+    let (chunk_head, body) = uncons(chunks.as_slice());
     let metadata:Vec<&[u8]> = chunk_head.as_slice().split(|x:&u8| *x == 10).collect();
     let (head, meta_tail):(&&[u8], &[&[u8]]) = uncons(metadata.as_slice());
-    let mut pktHead:PacketType;
-    let mut pktParam:Option<StrBuf> = None;
-    let mut pktArgs:HashMap<Text, Text> = HashMap::with_capacity(4);
-    let heads:Vec<&[u8]> = head.split(|x:&u8| *x == 32).collect();
+    let mut pktHead;
+    let mut pktParam = None;
+    let mut pktArgs = HashMap::with_capacity(4);
+    let heads:Vec<&[u8]> = head.split(|x| *x == 32).collect();
     match heads.as_slice() {
       [] => unreachable!(),
       [x] => pktHead = Packet::cmd_to_type(x),
@@ -95,7 +91,7 @@ impl Packet {
       body: if chunknum == 1 {
         None
       } else {
-        Some(body)
+        Some(connect_vec(body.as_slice(), [10, 10]))
       }
     }
   }
@@ -135,9 +131,4 @@ fn uncons<'a, V>(m: &'a [V]) -> (&'a V, &'a [V]) {
     Some(h) => (h, m.tail()),
     None => fail!("empty vector given to uncons")
   }
-}
-
-fn unconsf<'x,a,b,V>(m: &'x [V], h: |&'x V| -> a, t: |&'x [V]| -> b) -> (a,b) {
-  let (head, tail) = uncons(m);
-  (h(head), t(tail))
 }
