@@ -1,3 +1,4 @@
+#![crate_id="rustbot"]
 #![feature(macro_rules)]
 
 extern crate time;
@@ -22,13 +23,13 @@ macro_rules! log(
 macro_rules! failure(($($s:expr),+) => (Some(format!($($s),+).to_strbuf())))
 
 pub struct Bot {
-  hooks: Vec<~Hook>,
-  damn: ~Damn
+  pub hooks: Vec<~Hook>,
+  pub damn: ~Damn
 }
 
 pub struct Hook {
-  trigger: StrBuf,
-  f: Callback
+  pub trigger: StrBuf,
+  pub f: Callback
 }
 
 impl Clone for Hook {
@@ -57,8 +58,8 @@ pub struct Damn {
 }
 
 impl Damn {
-  pub fn write<T: Str>(&mut self, string: T) {
-    match self.sock.write(string.to_strbuf().as_bytes()) {
+  pub fn write(&mut self, string: &[u8]) {
+    match self.sock.write(string) {
       Ok(()) => match self.sock.write(&[10, 0]) {
         Ok(()) => (),
         Err(e) => fail!("{}", e)
@@ -68,8 +69,7 @@ impl Damn {
   }
 
   pub fn read(&mut self) -> StrBuf {
-    let mut buf = [0, ..8192];
-    let len = self.sock.read(buf).unwrap();
+    let buf:&[u8] = [0, ..8192];
     let vbuf = Vec::from_slice(buf);
     match StrBuf::from_utf8(vbuf) {
       Some(s) => s,
@@ -78,13 +78,13 @@ impl Damn {
   }
 
   pub fn make() -> IoResult<~Damn> {
-    get_host_addresses("chat.deviantart.com").and_then(|s| {
+    get_host_addresses("chat.deviantart.com").and_then(|s|
       match s.move_iter().next() {
-        Some(addr) => TcpStream::connect(SocketAddr{ ip: addr, port: 3900 })
+        Some(addr) => TcpStream::connect(SocketAddr { ip: addr, port: 3900 })
                         .map(|sk| ~Damn { sock: sk }),
         _ => fail!("No IP resolution for chat.deviantart.com!")
       }
-    })
+    )
   }
 }
 
@@ -97,7 +97,7 @@ impl Bot {
     }
   }
 
-  pub fn write<T: Str>(&mut self, pkt: T) {
+  pub fn write(&mut self, pkt: &[u8]) {
     self.damn.write(pkt);
   }
 
