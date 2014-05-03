@@ -57,15 +57,19 @@ impl Packet {
   }
 
   pub fn parse(pkt: &[u8]) -> Packet {
-    let chunks:Vec<ByteString> = split_vec(pkt, [10, 10]);
+    let chunks = split_vec(pkt, [10, 10]);
     let chunknum = chunks.len();
-    let (chunk_head, body) = unconsf(chunks, |n| n, |m| connect_vec(m, [10, 10]));
-    let metadata:Vec<&[u8]> = chunk_head.as_slice().split(|x| *x == 10).collect();
-    let (head, meta_tail):(&[u8], Vec<&[u8]>) = uncons(metadata);
+    let (chunk_head, body) =
+      unconsf(
+        chunks.as_slice(),
+        |n| n,
+        |m| connect_vec(m.as_slice(), [10, 10]));
+    let metadata:Vec<&[u8]> = chunk_head.as_slice().split(|x:&u8| *x == 10).collect();
+    let (head, meta_tail):(&&[u8], &[&[u8]]) = uncons(metadata.as_slice());
     let mut pktHead:PacketType;
     let mut pktParam:Option<StrBuf> = None;
     let mut pktArgs:HashMap<Text, Text> = HashMap::with_capacity(4);
-    let heads:Vec<&[u8]> = head.as_slice().split(|x:&u8| *x == 32).collect();
+    let heads:Vec<&[u8]> = head.split(|x:&u8| *x == 32).collect();
     match heads.as_slice() {
       [] => unreachable!(),
       [x] => pktHead = Packet::cmd_to_type(x),
@@ -74,17 +78,14 @@ impl Packet {
         pktParam = Some(StrBuf::from_utf8(Vec::from_slice(y)).unwrap())
       }
     }
-    for x in meta_tail.move_iter() {
-      let mut pair:Vec<&[u8]> = x.as_slice().splitn(1, |x:&u8| *x == 61).collect();
-      if pair.len() == 2 {
-        let key = pair.shift(); // determinism!!!
-        let value = pair.shift();
-        match (key, value) {
-          (Some(k), Some(v)) => pktArgs.insert(StrBuf::from_utf8(Vec::from_slice(k)).unwrap(), StrBuf::from_utf8(Vec::from_slice(v)).unwrap()),
-          _ => fail!("One of key or value was not found!")
-        }
-      } else {
-        false
+    for x in meta_tail.iter() {
+      let pair:Vec<&[u8]> = x.as_slice().splitn(1, |x:&u8| *x == 61).collect();
+      match pair.as_slice() {
+        [k, v] => pktArgs.insert(
+          StrBuf::from_utf8(Vec::from_slice(k)).unwrap(),
+          StrBuf::from_utf8(Vec::from_slice(v)).unwrap()
+        ),
+        _ => false
       };
     }
     Packet {
@@ -119,25 +120,24 @@ fn split_vec<T:Eq + Clone>(st: &[T], sep: &[T]) -> Vec<Vec<T>> {
   results
 }
 
-fn connect_vec<T: Clone>(st: Vec<Vec<T>>, sep: &[T]) -> Vec<T> {
+fn connect_vec<T: Clone>(st: &[Vec<T>], sep: &[T]) -> Vec<T> {
   let mut out = Vec::new();
-  out = out.append(st.get(0).as_slice());
+  out.push_all(st[0].as_slice());
   for l in range(1, st.len()) {
-    out = out.append(sep);
-    out = out.append(st.get(l).as_slice());
+    out.push_all(sep);
+    out.push_all(st[l].as_slice());
   }
   out
 }
 
-fn uncons<V>(m: Vec<V>) -> (V, Vec<V>) {
-  let mut m = m;
-  match m.shift() {
-    Some(s) => (s, m),
+fn uncons<'a, V>(m: &'a [V]) -> (&'a V, &'a [V]) {
+  match m.head() {
+    Some(h) => (h, m.tail()),
     None => fail!("empty vector given to uncons")
   }
 }
 
-fn unconsf<a,b,V>(m: Vec<V>, h: |V| -> a, t: |Vec<V>| -> b) -> (a,b) {
+fn unconsf<'x,a,b,V>(m: &'x [V], h: |&'x V| -> a, t: |&'x [V]| -> b) -> (a,b) {
   let (head, tail) = uncons(m);
   (h(head), t(tail))
 }
